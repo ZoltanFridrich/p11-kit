@@ -3927,6 +3927,23 @@ p11_virtual_wrap (p11_virtual *virt,
 
 #endif /* !FFI_CLOSURES */
 
+CK_FUNCTION_LIST *
+p11_virtual_wrap_version (p11_virtual *virt,
+                          p11_destroyer destroyer,
+                          const CK_VERSION *version)
+{
+	CK_FUNCTION_LIST *result;
+
+	result = p11_virtual_wrap (virt, destroyer);
+	return_val_if_fail (result != NULL, NULL);
+	/* The easy and ugly way */
+	if (version != NULL) {
+		result->version.major = version->major;
+		result->version.minor = version->minor;
+	}
+	return result;
+}
+
 bool
 p11_virtual_is_wrapper (CK_FUNCTION_LIST_PTR module)
 {
@@ -4183,7 +4200,7 @@ p11_virtual_wrap_fixed (p11_virtual *virt,
 	}
 	p11_mutex_unlock (&p11_virtual_mutex);
 
-	return result;
+	return (CK_FUNCTION_LIST *)result;
 }
 
 static void

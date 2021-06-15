@@ -68,7 +68,7 @@
 typedef struct _Mapping {
 	CK_SLOT_ID wrap_slot;
 	CK_SLOT_ID real_slot;
-	CK_FUNCTION_LIST_PTR funcs;
+	CK_FUNCTION_LIST_3_0_PTR funcs;
 } Mapping;
 
 typedef struct _Session {
@@ -188,6 +188,24 @@ map_session_to_real (Proxy *px,
 	return rv;
 }
 
+static CK_RV
+map_session_to_real3 (Proxy *px,
+                      CK_SESSION_HANDLE_PTR handle,
+                      Mapping *mapping,
+                      Session *session)
+{
+	CK_RV rv;
+
+	rv = map_session_to_real (px, handle, mapping, session);
+	if (rv != CKR_OK)
+		return rv;
+
+	if (mapping->funcs->version.major < 3)
+		return CKR_FUNCTION_NOT_SUPPORTED;
+
+	return CKR_OK;
+}
+
 static void
 proxy_free (Proxy *py, unsigned finalize)
 {
@@ -293,9 +311,9 @@ proxy_list_slots (Proxy *py, Mapping *mappings, unsigned int n_mappings)
 				for (j = 0; j < n_mappings; ++j) {
 					/* cppcheck-suppress nullPointer symbolName=mappings */
 					/* false-positive: https://trac.cppcheck.net/ticket/9573 */
-					if (mappings[j].funcs == funcs &&
+					if ((void *)mappings[j].funcs == (void *)funcs &&
 					    mappings[j].real_slot == slots[i]) {
-						py->mappings[py->n_mappings].funcs = funcs;
+						py->mappings[py->n_mappings].funcs = (CK_FUNCTION_LIST_3_0 *)funcs;
 						py->mappings[py->n_mappings].real_slot = slots[i];
 						py->mappings[py->n_mappings].wrap_slot =
 							mappings[j].wrap_slot;
@@ -312,7 +330,7 @@ proxy_list_slots (Proxy *py, Mapping *mappings, unsigned int n_mappings)
 			/* And now add a mapping for each new slot */
 			for (i = 0; i < new_slots_count; ++i) {
 				++py->last_id;
-				py->mappings[py->n_mappings].funcs = funcs;
+				py->mappings[py->n_mappings].funcs = (CK_FUNCTION_LIST_3_0 *)funcs;
 				py->mappings[py->n_mappings].wrap_slot =
 					py->last_id + MAPPING_OFFSET;
 				py->mappings[py->n_mappings].real_slot = new_slots[i];
@@ -651,7 +669,7 @@ proxy_C_WaitForSlotEvent (CK_X_FUNCTION_LIST *self,
 		if (rv != CKR_OK)
 			break;
 		for (i = 0; i < py->n_mappings; i++)
-			if (py->mappings[i].funcs == funcs &&
+			if ((void *)py->mappings[i].funcs == (void *)funcs &&
 			    py->mappings[i].real_slot == real_slot) {
 				*slot = py->mappings[i].wrap_slot;
 				break;
@@ -2268,7 +2286,7 @@ get_function_list_inlock(void **list, const CK_VERSION *version)
 			state->loaded = loaded;
 			loaded = NULL;
 
-			module = p11_virtual_wrap (&state->virt, free);
+			module = p11_virtual_wrap_version (&state->virt, free, version);
 			if (module == NULL) {
 				rv = CKR_GENERAL_ERROR;
 
